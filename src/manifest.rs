@@ -31,7 +31,7 @@ fn get_lib_crate_name(target: &Target) -> String {
 fn get_relative_src_path(pkg: &Package, target: &Target) -> Utf8PathBuf {
     target.src_path
         .strip_prefix(pkg.manifest_path.parent().unwrap())
-        .unwrap()
+        .expect("target src_path should have package manifest dir as prefix")
         .to_owned()
 }
 
@@ -47,7 +47,7 @@ fn get_crate_paths(metadata: &Metadata) -> HashMap<String, CratePaths> {
 }
 
 fn get_target_paths(metadata: &Metadata) -> HashMap<String, Utf8PathBuf> {
-    let root_pkg = metadata.root_package().expect("failed to determine root package");
+    let root_pkg = metadata.root_package().expect("root package should exist");
 
     root_pkg.targets.iter()
         .map(|target| (target.name.clone(), get_relative_src_path(root_pkg, target)))
@@ -58,7 +58,7 @@ pub(crate) fn process_manifest(manifest_dir: &Utf8Path) -> Paths {
     let metadata = MetadataCommand::new()
         .manifest_path(manifest_dir.join("Cargo.toml"))
         .exec()
-        .unwrap();
+        .expect("metadata should be processed successfully to proceed");
 
     Paths {
         crate_paths: get_crate_paths(&metadata),
