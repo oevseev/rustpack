@@ -20,9 +20,7 @@ fn bundle_src(
     let root_src_path = manifest_dir_absolute.join(src_path);
     let out_path_absolute = out_dir_absolute.join(out_path);
 
-    let mut bundler = Bundler::new(
-        &manifest_dir_absolute, &out_dir_absolute, crate_paths, &root_src_path, &out_path_absolute);
-    
+    let mut bundler = Bundler::new(crate_paths, &root_src_path, &out_path_absolute);
     bundler.bundle()
 }
 

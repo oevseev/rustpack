@@ -1,4 +1,5 @@
-use std::{collections::HashMap, fs::File, io::Read};
+use core::fmt;
+use std::{collections::HashMap, fs::File, io::{Read, self, Write}, error::Error, fmt::Display};
 
 use camino::{Utf8PathBuf, Utf8Path};
 use quote::{quote, ToTokens};
@@ -7,9 +8,26 @@ use syn::{ItemMod, parse_quote, Ident, Item, UseTree, visit_mut::{VisitMut, self
 use crate::manifest::CratePaths;
 
 #[derive(Debug)]
+pub(crate) struct BundleError {
+    msg: String,
+}
+
+impl BundleError {
+    fn new(msg: &str) -> BundleError {
+        BundleError { msg: msg.to_owned() }
+    }
+}
+
+impl Display for BundleError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.msg)
+    }
+}
+
+impl Error for BundleError {}
+
+#[derive(Debug)]
 pub(crate) struct Bundler<'a> {
-    root_manifest_dir: Utf8PathBuf,
-    out_dir: Utf8PathBuf,
     crate_paths: &'a HashMap<String, CratePaths>,
     root_src_path: Utf8PathBuf,
     out_path: Utf8PathBuf,
@@ -19,15 +37,11 @@ pub(crate) struct Bundler<'a> {
 
 impl<'a> Bundler<'a> {
     pub(crate) fn new(
-        manifest_dir: &Utf8Path,
-        out_dir: &Utf8Path,
         crate_paths: &'a HashMap<String, CratePaths>,
         src_path: &Utf8Path,
         out_path: &Utf8Path
     ) -> Bundler<'a> {
         Bundler {
-            root_manifest_dir: manifest_dir.to_path_buf(),
-            out_dir: out_dir.to_path_buf(),
             crate_paths,
             root_src_path: src_path.to_path_buf(),
             out_path: out_path.to_path_buf(),
@@ -43,15 +57,30 @@ impl<'a> Bundler<'a> {
     pub(crate) fn bundle(&mut self) {
         self.consolidate();
 
-        // TODO: Output result to file
-        println!("{:#?}", self.out_file.clone().into_token_stream().to_string());
+        let mut file = File::create(&self.out_path).expect("out file should be opened to proceed");
+        file.write(self.out_file.clone().into_token_stream().to_string().as_bytes()).expect("out file should be available for write");
     }
 
     fn consolidate(&mut self) {
         let src_path = self.root_src_path.clone();
-        
-        self.out_file = parse_file(&src_path);
-        Visitor::new(&src_path, "").visit_file_mut(&mut self.out_file)
+
+        self.out_file = parse_file(&src_path).expect("root source must be parsed correctly to proceed");
+        Visitor::new(&src_path, "").visit_file_mut(&mut self.out_file);
+
+        for (crate_name, crate_paths) in self.crate_paths {
+            let crate_src_path = crate_paths.manifest_dir.join(crate_paths.src_path.clone());
+            let crate_file = parse_file(&crate_src_path).expect("crate source must be parsed correctly to proceed");
+            let ref mut crate_module = self.get_crate_module(crate_name);
+
+            crate_module.attrs = crate_file.attrs;
+            crate_module.content = Some((Default::default(), crate_file.items));
+
+            Visitor::new(&crate_src_path, crate_name).visit_item_mod_mut(crate_module);
+        }
+
+        for (_, crate_module) in self.crate_modules.drain() {
+            self.out_file.items.push(Item::Mod(crate_module));
+        }
     }
 
     fn get_crate_module(&mut self, crate_name: &str) -> &mut ItemMod {
@@ -85,7 +114,7 @@ impl Visitor {
         }
     }
 
-    fn expand_mod_item(&mut self, i: &ItemMod) -> (ItemMod, Utf8PathBuf) {
+    fn expand_mod_item(&mut self, i: &ItemMod) -> Result<(ItemMod, Utf8PathBuf), Box<dyn Error>> {
         let mut expanded_mod = i.clone();
 
         let path_attr_value = i.attrs.iter()
@@ -102,8 +131,9 @@ impl Visitor {
                 _ => None,
             });
 
+        let src_dir = self.src_paths.last().unwrap().parent().unwrap();
+
         let mod_src_path = if path_attr_value.is_none() {
-            let src_dir = self.src_paths.last().unwrap().parent().unwrap();
             let module_name = i.ident.to_string();
 
             let file_src_path = Utf8PathBuf::from(module_name.clone()).with_extension("rs");
@@ -113,18 +143,23 @@ impl Visitor {
             let absolute_mod_rs_src_path = src_dir.join(mod_rs_src_path);
 
             let src_paths = vec![absolute_file_src_path, absolute_mod_rs_src_path];
-            src_paths.iter()
-                .find(|p| p.exists())
-                .expect("module file should exist")
-                .to_owned()
+            src_paths.iter().find(|p| p.exists()).and_then(|p| Some(p.to_owned()))
         } else {
-            Utf8PathBuf::from(path_attr_value.unwrap())
+            Some(src_dir.clone().join(path_attr_value.unwrap()).canonicalize_utf8()?)
         };
 
-        let module_file = parse_file(&mod_src_path);
-        expanded_mod.content = Some((Default::default(), module_file.items));
+        if let Some(p) = mod_src_path {
+            if !p.exists() {
+                return Err(Box::new(BundleError::new("module file does not exist")))
+            }
 
-        (expanded_mod, mod_src_path)
+            let module_file = parse_file(&p)?;
+            expanded_mod.content = Some((Default::default(), module_file.items));
+
+            Ok((expanded_mod, p.to_owned()))
+        } else {
+            Err(Box::new(BundleError::new("module file does not exist")))
+        }
     }
 }
 
@@ -146,12 +181,18 @@ impl VisitMut for Visitor {
             return visit_mut::visit_item_mod_mut(self, i)
         }
 
-        let (expanded_mod, src_path) = self.expand_mod_item(i);
-        *i = expanded_mod;
+        if let Ok((expanded_mod, src_path)) = self.expand_mod_item(i) {
+            *i = expanded_mod;
 
-        self.src_paths.push(src_path);
-        visit_mut::visit_item_mod_mut(self, i);
-        self.src_paths.pop();
+            self.src_paths.push(src_path);
+            visit_mut::visit_item_mod_mut(self, i);
+            self.src_paths.pop();
+        } else {
+            eprintln!("warning: {}: could not expand {}", self.src_paths.last().unwrap(), i.ident.to_string());
+            i.content = Some((Default::default(), Vec::new()));
+
+            visit_mut::visit_item_mod_mut(self, i)
+        }
     }
 
     fn visit_path_mut(&mut self, i: &mut syn::Path) {
@@ -187,11 +228,12 @@ impl VisitMut for Visitor {
     }
 }
 
-fn parse_file(src_path: &Utf8Path) -> syn::File {
-    let mut file = File::open(&src_path).expect("file should be available for opening");
+fn parse_file(src_path: &Utf8Path) -> Result<syn::File, Box<dyn Error>> {
+    eprintln!("{}", src_path);
 
+    let mut file = File::open(&src_path)?;
     let mut src = String::new();
-    file.read_to_string(&mut src).expect("file should be available for reading");
+    file.read_to_string(&mut src)?;
 
-    syn::parse_file(&src).expect("file should be a valid Rust source file")
+    Ok(syn::parse_file(&src)?)
 }
