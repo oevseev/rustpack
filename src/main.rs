@@ -23,7 +23,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
     let out_dir = match args.out_dir {
-        Some(s) => Utf8PathBuf::from(s),
+        Some(ref s) => Utf8PathBuf::from(s),
         None => {
             let current_dir = env::current_dir().expect("current dir should be a valid directory");
             Utf8PathBuf::from_path_buf(current_dir).expect("current dir should be a valid UTF-8 path")

@@ -5,14 +5,14 @@ use cargo_metadata::{MetadataCommand, Package, Target, Metadata};
 
 #[derive(Debug)]
 pub(crate) struct CratePaths {
-    manifest_dir: Utf8PathBuf,
-    src_path: Utf8PathBuf,
+    pub(crate) manifest_dir: Utf8PathBuf,
+    pub(crate) src_path: Utf8PathBuf,
 }
 
 #[derive(Debug)]
 pub(crate) struct Paths {
-    crate_paths: HashMap<String, CratePaths>,
-    target_paths: HashMap<String, Utf8PathBuf>,
+    pub(crate) crate_paths: HashMap<String, CratePaths>,
+    pub(crate) target_paths: HashMap<String, Utf8PathBuf>,
 }
 
 fn get_pkg_manifest_dir(pkg: &Package) -> Utf8PathBuf {
@@ -50,7 +50,10 @@ fn get_target_paths(metadata: &Metadata) -> HashMap<String, Utf8PathBuf> {
     let root_pkg = metadata.root_package().expect("root package should exist");
 
     root_pkg.targets.iter()
-        .map(|target| (target.name.clone(), get_relative_src_path(root_pkg, target)))
+        .filter(|target| target.kind.iter().any(|k| k == "bin"))
+        .map(|target| (
+            if target.name != root_pkg.name { target.name.clone() } else { String::new() },
+            get_relative_src_path(root_pkg, target)))
         .collect()
 }
 

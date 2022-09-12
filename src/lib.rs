@@ -1,6 +1,5 @@
-pub(crate) mod build;
+pub(crate) mod api;
 pub(crate) mod bundle;
 pub(crate) mod manifest;
 
-pub use crate::build::build;
-pub use crate::bundle::{bundle_bin, bundle_all};
+pub use crate::api::{build, bundle_bin, bundle_all};
