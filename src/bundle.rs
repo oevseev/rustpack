@@ -14,7 +14,13 @@ pub(crate) struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
-    pub(crate) fn new(manifest_dir: &Utf8Path, out_dir: &Utf8Path, crate_paths: &'a HashMap<String, CratePaths>, src_path: &Utf8Path, out_path: &Utf8Path) -> Context<'a> {
+    pub(crate) fn new(
+        manifest_dir: &Utf8Path,
+        out_dir: &Utf8Path,
+        crate_paths: &'a HashMap<String, CratePaths>,
+        src_path: &Utf8Path,
+        out_path: &Utf8Path
+    ) -> Context<'a> {
         Context {
             root_manifest_dir: manifest_dir.to_path_buf(),
             out_dir: out_dir.to_path_buf(),

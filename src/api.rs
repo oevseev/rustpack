@@ -4,14 +4,25 @@ use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::{manifest::{process_manifest, CratePaths}, bundle::{bundle, Context}};
 
-fn bundle_src(manifest_dir: &Utf8Path, out_dir: &Utf8Path, crate_paths: &HashMap<String, CratePaths>, src_path: &Utf8Path, out_path: &Utf8Path) {    
-    let manifest_dir_absolute = manifest_dir.canonicalize_utf8().expect("manifest dir must be canonicalized to proceed");
-    let out_dir_absolute = out_dir.canonicalize_utf8().expect("output dir must be canonicalized to proceed");
+fn bundle_src(
+    manifest_dir: &Utf8Path,
+    out_dir: &Utf8Path,
+    crate_paths: &HashMap<String, CratePaths>,
+    src_path: &Utf8Path, out_path: &Utf8Path
+) {    
+    let manifest_dir_absolute = manifest_dir
+        .canonicalize_utf8()
+        .expect("manifest dir must be canonicalized to proceed");
+    let out_dir_absolute = out_dir
+        .canonicalize_utf8()
+        .expect("output dir must be canonicalized to proceed");
 
     let root_src_path = manifest_dir_absolute.join(src_path);
     let out_path_absolute = out_dir_absolute.join(out_path);
 
-    let mut ctx = Context::new(&manifest_dir_absolute, &out_dir_absolute, crate_paths, &root_src_path, &out_path_absolute);
+    let mut ctx = Context::new(
+        &manifest_dir_absolute, &out_dir_absolute, crate_paths, &root_src_path, &out_path_absolute);
+
     bundle(&mut ctx)
 }
 
