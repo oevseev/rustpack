@@ -1,9 +1,9 @@
 use core::fmt;
-use std::{collections::HashMap, fs::File, io::{Read, self, Write}, error::Error, fmt::Display};
+use std::{collections::HashMap, fs::File, io::{Read, Write}, error::Error, fmt::Display};
 
 use camino::{Utf8PathBuf, Utf8Path};
 use quote::{quote, ToTokens};
-use syn::{ItemMod, parse_quote, Ident, Item, UseTree, visit_mut::{VisitMut, self}, punctuated::Punctuated, PathSegment, Token, Meta, Lit};
+use syn::{ItemMod, parse_quote, Ident, Item, UseTree, visit_mut::{VisitMut, self}, PathSegment, Meta, Lit, PathArguments, UsePath};
 
 use crate::manifest::CratePaths;
 
@@ -202,15 +202,19 @@ impl VisitMut for Visitor {
         }
     }
 
+    fn visit_visibility_mut(&mut self, _i: &mut syn::Visibility) {
+        // No-op: avoid rewriting paths in visibility
+        return
+    }
+
     fn visit_path_mut(&mut self, i: &mut syn::Path) {
         if i.segments[0].ident == "crate" {
             if self.crate_name.is_some() {
-                // Replace "crate::" prefix with corresponding module name prefix
-                i.segments[0].ident = self.crate_name.clone().unwrap()
-            } else {
-                // Strip "crate::" prefix
-                let new_path: Punctuated<PathSegment, Token![::]> = i.segments.clone().into_iter().skip(1).collect();
-                i.segments = new_path
+                // Append module name after "crate::"
+                i.segments.insert(1, PathSegment{
+                    ident: self.crate_name.clone().unwrap(),
+                    arguments: PathArguments::None,
+                })
             }
         }
 
@@ -223,11 +227,13 @@ impl VisitMut for Visitor {
                 return visit_mut::visit_use_tree_mut(self, i)
             }
             if self.crate_name.is_some() {
-                // Replace "crate::" prefix with corresponding module name prefix
-                path.ident = self.crate_name.clone().unwrap()
-            } else {
-                // Strip "crate::" prefix
-                *i = *path.tree.clone()
+                let ref old_tree = path.tree;
+                let new_tree = Box::new(UseTree::Path(UsePath{
+                    ident: self.crate_name.clone().unwrap(),
+                    colon2_token: Default::default(),
+                    tree: old_tree.to_owned(),
+                }));
+                path.tree = new_tree;
             }
         }
 

@@ -35,15 +35,21 @@ fn get_relative_src_path(pkg: &Package, target: &Target) -> Utf8PathBuf {
         .to_owned()
 }
 
-fn get_crate_paths(metadata: &Metadata) -> HashMap<String, CratePaths> {    
-    metadata.packages.iter()
+fn get_crate_paths(metadata: &Metadata, exclude: &Vec<String>) -> HashMap<String, CratePaths> {    
+    let mut crate_paths: HashMap<String, CratePaths> = metadata.packages.iter()
         // Use filter_map because are interested only in library crates
         .filter_map(|pkg| get_lib_crate_target(pkg)
             .map(|target| (get_lib_crate_name(target), CratePaths {
                 manifest_dir: get_pkg_manifest_dir(pkg),
                 src_path: get_relative_src_path(pkg, target),
             })))
-        .collect()
+        .collect();
+    
+    for item in exclude {
+        crate_paths.remove(item);
+    }
+
+    crate_paths
 }
 
 fn get_target_paths(metadata: &Metadata) -> HashMap<String, Utf8PathBuf> {
@@ -57,14 +63,14 @@ fn get_target_paths(metadata: &Metadata) -> HashMap<String, Utf8PathBuf> {
         .collect()
 }
 
-pub(crate) fn process_manifest(manifest_dir: &Utf8Path) -> Paths {
+pub(crate) fn process_manifest(manifest_dir: &Utf8Path, exclude: &Vec<String>) -> Paths {
     let metadata = MetadataCommand::new()
         .manifest_path(manifest_dir.join("Cargo.toml"))
         .exec()
         .expect("metadata should be processed successfully to proceed");
 
     Paths {
-        crate_paths: get_crate_paths(&metadata),
+        crate_paths: get_crate_paths(&metadata, exclude),
         target_paths: get_target_paths(&metadata),
     }
 }

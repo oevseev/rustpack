@@ -24,8 +24,8 @@ fn bundle_src(
     bundler.bundle()
 }
 
-pub fn bundle_bin(manifest_dir: &Utf8Path, out_dir: &Utf8Path, bin: Option<&str>) {
-    let paths = process_manifest(manifest_dir);
+pub fn bundle_bin(manifest_dir: &Utf8Path, out_dir: &Utf8Path, exclude: &Vec<String>, bin: Option<&str>) {
+    let paths = process_manifest(manifest_dir, exclude);
 
     let src_path = paths.target_paths
         .get(bin.unwrap_or(""))
@@ -35,8 +35,8 @@ pub fn bundle_bin(manifest_dir: &Utf8Path, out_dir: &Utf8Path, bin: Option<&str>
     bundle_src(manifest_dir, out_dir, &paths.crate_paths, src_path, &out_path);
 }
 
-pub fn bundle_all(manifest_dir: &Utf8Path, out_dir: &Utf8Path) {
-    let paths = process_manifest(manifest_dir);
+pub fn bundle_all(manifest_dir: &Utf8Path, out_dir: &Utf8Path, exclude: &Vec<String>) {
+    let paths = process_manifest(manifest_dir, exclude);
 
     for (ref target_name, ref src_path) in paths.target_paths {
         let out_path = if target_name != "" {
@@ -53,5 +53,5 @@ pub fn build() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set");
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR should be set");
 
-    bundle_all(Utf8Path::new(&manifest_dir), Utf8Path::new(&out_dir))
+    bundle_all(Utf8Path::new(&manifest_dir), Utf8Path::new(&out_dir), &Vec::new())
 }

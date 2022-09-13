@@ -18,10 +18,15 @@ struct Args {
     /// Binary to bundle (optional)
     #[clap(long, value_parser)]
     bin: Option<String>,
+
+    /// Packages to exclude
+    #[clap(long, value_parser)]
+    exclude: Vec<String>
 }
 
 fn main() {
     let args = Args::parse();
+
     let out_dir = match args.out_dir {
         Some(ref s) => Utf8PathBuf::from(s),
         None => {
@@ -30,5 +35,5 @@ fn main() {
         },
     };
     
-    bundle_bin(Utf8Path::new(&args.manifest_dir), out_dir.as_path(), args.bin.as_deref())
+    bundle_bin(Utf8Path::new(&args.manifest_dir), out_dir.as_path(), &args.exclude, args.bin.as_deref())
 }
