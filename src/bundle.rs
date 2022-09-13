@@ -75,7 +75,10 @@ impl<'a> Bundler<'a> {
             crate_module.attrs = crate_file.attrs;
             crate_module.content = Some((Default::default(), crate_file.items));
 
-            Visitor::new(&crate_src_path, crate_name).visit_item_mod_mut(crate_module);
+            let mut visitor = Visitor::new(&crate_src_path, crate_name);
+
+            // Call overridden function instead of Visitor's own to avoid applying rules to the root module
+            visit_mut::visit_item_mod_mut(&mut visitor, crate_module);
         }
 
         for (_, crate_module) in self.crate_modules.drain() {
@@ -178,7 +181,14 @@ impl VisitMut for Visitor {
 
     fn visit_item_mod_mut(&mut self, i: &mut ItemMod) {
         if i.content.is_some() {
-            return visit_mut::visit_item_mod_mut(self, i)
+            let src_path = self.src_paths.last().unwrap().parent().unwrap();
+            let pseudo_src_path = src_path.join(i.ident.to_string()).join("mod.rs");
+
+            self.src_paths.push(pseudo_src_path);
+            visit_mut::visit_item_mod_mut(self, i);
+            self.src_paths.pop();
+
+            return
         }
 
         if let Ok((expanded_mod, src_path)) = self.expand_mod_item(i) {
@@ -189,9 +199,6 @@ impl VisitMut for Visitor {
             self.src_paths.pop();
         } else {
             eprintln!("warning: {}: could not expand {}", self.src_paths.last().unwrap(), i.ident.to_string());
-            i.content = Some((Default::default(), Vec::new()));
-
-            visit_mut::visit_item_mod_mut(self, i)
         }
     }
 
